@@ -1232,7 +1232,8 @@
         showPage('invite');
         setupInvitePage(inviteId, currentUser);
       } else {
-        sessionStorage.removeItem('forceHome'); // 成功進入 app，清掉旗標
+        inviteOnly = false;
+        sessionStorage.removeItem('forceHome');
         showPage('app');
         loadMeetings();
       }
@@ -1272,9 +1273,15 @@
   // ── 回首頁 ──
   function goHome() {
     sessionStorage.removeItem('pendingInviteId');
-    sessionStorage.setItem('forceHome', '1'); // 標記：使用者主動回首頁，下次登入進 app
+    sessionStorage.removeItem('forceHome');
     inviteOnly = false;
-    sb.auth.signOut();
+    // 不登出，直接切回 app 頁
+    if (currentUser) {
+      showPage('app');
+      loadMeetings();
+    } else {
+      showPage('login');
+    }
   }
 
   // ── 我的預約 側拉板 ──
@@ -1890,7 +1897,7 @@
   // ── Email 通知（EmailJS）──
   // 請至 https://www.emailjs.com 申請帳號，設定 Service + Template，填入以下三個值
   const EMAILJS_PUBLIC_KEY  = 'kKYdIkREtsAgG_-Ty';
-  const EMAILJS_SERVICE_ID  = 'service_0dt4mw5';
+  const EMAILJS_SERVICE_ID  = 'service_70al5hs';
   const EMAILJS_TEMPLATE_ID = 'template_eywlk1o';
 
   async function sendMeetingNotifications(mtg, slot, bookings) {
