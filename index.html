@@ -29,6 +29,19 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
+    @media (max-width: 480px) {
+      .login-card {
+        width: 100%;
+        padding: 36px 24px;
+        border-radius: 16px;
+      }
+      #login-page {
+        padding: 16px;
+        align-items: flex-start;
+        padding-top: 48px;
+      }
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -1957,9 +1970,14 @@
 
   // ── Google 登入 ──
   document.getElementById('btn-google').addEventListener('click', async () => {
+    // 使用不含 hash 的乾淨 URL，避免手機瀏覽器 redirect 失敗
+    const redirectTo = window.location.origin + window.location.pathname;
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.href }
+      options: {
+        redirectTo,
+        skipBrowserRedirect: false,
+      }
     });
     if (error) toast(error.message, 'error');
   });
@@ -2526,4 +2544,3 @@
 </script>
 </body>
 </html>
-  
