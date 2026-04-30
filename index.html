@@ -6,6 +6,7 @@
   <title>Calenzo — 會議預約平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     :root {
       --bg: #f5faf5;
@@ -791,7 +792,14 @@
     .map-suggestion-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
 
     /* ── 線上會議連結顯示 ── */
-    .online-link-pill {
+    .meeting-card-confirmed {
+      border-color: var(--accent-light);
+      background: linear-gradient(160deg, #ffffff 0%, #f0faf0 100%);
+    }
+    .meeting-card-confirmed:hover {
+      border-color: var(--accent);
+      box-shadow: 0 6px 24px rgba(46,125,50,0.13);
+    }
       display: inline-flex;
       align-items: center;
       gap: 5px;
@@ -1048,6 +1056,11 @@
           <input type="text" id="invite-name" placeholder="王小明" />
         </div>
         <div class="form-group">
+          <label>Email *</label>
+          <input type="email" id="invite-email" placeholder="your@email.com" />
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">確認時段後，會議通知將寄送至此信箱</div>
+        </div>
+        <div class="form-group">
           <label>備注（選填）</label>
           <input type="text" id="invite-note" placeholder="任何補充說明..." />
         </div>
@@ -1074,6 +1087,19 @@
           <button class="btn btn-outline" onclick="sb.auth.signOut()">登出</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal: 會議詳情 ══ -->
+<div class="modal-overlay" id="modal-meeting-detail">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <span class="modal-title" id="detail-title"></span>
+      <button class="close-btn" data-close="modal-meeting-detail">×</button>
+    </div>
+    <div id="detail-body">
+      <div class="loading"><div class="spinner"></div>載入中...</div>
     </div>
   </div>
 </div>
@@ -1349,7 +1375,10 @@
     if (existing && !isClosed) {
       document.getElementById('invite-already-msg').style.display = 'block';
       document.getElementById('invite-name').value = existing.user_name || '';
+      document.getElementById('invite-email').value = existing.user_email || user.email || '';
       document.getElementById('invite-note').value = existing.note || '';
+    } else {
+      document.getElementById('invite-email').value = user.email || '';
     }
 
     // ── 顯示投票結果 ──
@@ -1390,21 +1419,136 @@
 
     if (!isClosed) {
       document.getElementById('btn-invite-submit').onclick = async () => {
-        const name = document.getElementById('invite-name').value.trim();
-        const note = document.getElementById('invite-note').value.trim();
+        const name    = document.getElementById('invite-name').value.trim();
+        const email   = document.getElementById('invite-email').value.trim();
+        const note    = document.getElementById('invite-note').value.trim();
         const slotIds = [...document.querySelectorAll('#invite-slots input:checked')].map(i => i.value);
-        if (!name) return toast('請填寫姓名', 'error');
+        if (!name)  return toast('請填寫姓名', 'error');
+        if (!email) return toast('請填寫 Email', 'error');
         if (!slotIds.length) return toast('請至少選一個時段', 'error');
+        const btn = document.getElementById('btn-invite-submit');
+        btn.disabled = true;
+        btn.textContent = '送出中…';
         const { error } = await sb.from('bookings').upsert({
           meeting_id: meetingId, user_id: user.id, user_name: name,
-          user_email: user.email, slot_ids: slotIds, attendees: 1, note: note || null
+          user_email: email, slot_ids: slotIds, attendees: 1, note: note || null
         }, { onConflict: 'meeting_id,user_id' });
-        if (error) return toast(error.message, 'error');
-        toast('回應已送出！感謝您 ✓');
-        document.getElementById('btn-invite-submit').textContent = '✓ 已送出';
-        document.getElementById('btn-invite-submit').disabled = true;
+        if (error) {
+          btn.disabled = false;
+          btn.textContent = '送出回應';
+          return toast(error.message, 'error');
+        }
+        // 成功 → 顯示感謝畫面後跳回首頁
+        document.getElementById('invite-form-section').innerHTML = `
+          <div style="text-align:center;padding:60px 24px;background:var(--surface);border:1px solid var(--border);border-radius:20px">
+            <div style="font-size:3.5rem;margin-bottom:16px">✅</div>
+            <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--accent);margin-bottom:10px">回應已送出！</h2>
+            <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:8px">感謝你填寫可用時段。</p>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:28px">確認會議時間後，通知將寄送至 <strong style="color:var(--text)">${escHtml(email)}</strong></p>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" onclick="goHome()" style="width:auto">🏠 回首頁</button>
+            </div>
+          </div>`;
+        // 3 秒後自動跳回首頁
+        setTimeout(() => goHome(), 4000);
       };
     }
+  }
+
+  // ── 會議詳情 Modal ──
+  async function openMeetingDetail(meetingId) {
+    document.getElementById('detail-title').textContent = '會議詳情';
+    document.getElementById('detail-body').innerHTML = '<div class="loading"><div class="spinner"></div>載入中...</div>';
+    openModal('modal-meeting-detail');
+
+    // 取得會議資料
+    const { data: m } = await sb.from('meetings').select('*').eq('id', meetingId).single();
+    if (!m) { document.getElementById('detail-body').innerHTML = '<p style="color:var(--danger)">找不到此會議</p>'; return; }
+
+    // 取得確認時段
+    const { data: slot } = m.confirmed_slot_id
+      ? await sb.from('time_slots').select('*').eq('id', m.confirmed_slot_id).single()
+      : { data: null };
+
+    // 取得所有時段
+    const { data: allSlots } = await sb.from('time_slots').select('*').eq('meeting_id', meetingId).order('slot_date').order('slot_start');
+
+    // 取得出席者（已投票且包含確認時段）
+    const { data: bookings } = await sb.from('bookings').select('user_name,user_email,slot_ids,attendees').eq('meeting_id', meetingId);
+    const attendees = slot ? (bookings || []).filter(b => (b.slot_ids||[]).includes(slot.id)) : [];
+    const totalAttendees = attendees.reduce((sum, b) => sum + (b.attendees || 1), 0);
+
+    // 目前使用者的 booking
+    const myBooking = (bookings || []).find(b => b.user_email === currentUser.email);
+
+    document.getElementById('detail-title').textContent = m.title;
+
+    const isOwner = m.created_by === currentUser.id;
+    const locationHtml = m.meeting_url
+      ? `<a href="${escHtml(m.meeting_url)}" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:none">💻 點此加入線上會議 →</a>`
+      : `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.location)}" target="_blank" style="color:var(--accent);text-decoration:none">📍 ${escHtml(m.location)}</a>`;
+
+    document.getElementById('detail-body').innerHTML = `
+      <!-- 確認時間大橫幅 -->
+      ${slot ? `
+      <div style="background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:14px;padding:20px 24px;color:#fff;margin-bottom:20px;text-align:center">
+        <div style="font-size:0.78rem;opacity:0.85;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">✓ 已確認會議時間</div>
+        <div style="font-size:1.4rem;font-family:'Playfair Display',serif;font-weight:700;margin-bottom:4px">${formatDate(slot.slot_date)}</div>
+        <div style="font-size:1.1rem;opacity:0.92">${slot.slot_start.slice(0,5)} – ${slot.slot_end.slice(0,5)}</div>
+      </div>` : ''}
+
+      <!-- 基本資訊 -->
+      <div style="display:grid;gap:12px;margin-bottom:20px">
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
+          <span style="font-size:1.2rem;line-height:1">👤</span>
+          <div>
+            <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">主辦人</div>
+            <div style="font-weight:600">${escHtml(m.organizer)}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
+          <span style="font-size:1.2rem;line-height:1">${m.meeting_url ? '💻' : '📍'}</span>
+          <div>
+            <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">${m.meeting_url ? '線上連結' : '地點'}</div>
+            <div>${locationHtml}</div>
+          </div>
+        </div>
+        ${m.description ? `
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
+          <span style="font-size:1.2rem;line-height:1">📝</span>
+          <div>
+            <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">說明</div>
+            <div style="font-size:0.88rem;color:var(--text)">${escHtml(m.description)}</div>
+          </div>
+        </div>` : ''}
+        ${slot ? `
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
+          <span style="font-size:1.2rem;line-height:1">👥</span>
+          <div>
+            <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">預計出席（${attendees.length} 人回覆，共 ${totalAttendees} 位）</div>
+            ${attendees.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${attendees.map(b => `<span style="background:rgba(46,125,50,0.1);color:var(--accent);border:1px solid var(--accent-light);border-radius:20px;padding:3px 10px;font-size:0.78rem;font-weight:500">${escHtml(b.user_name || b.user_email)}${b.attendees > 1 ? ` ×${b.attendees}` : ''}</span>`).join('')}</div>` : '<div style="font-size:0.85rem;color:var(--text-muted)">尚無人回覆此時段</div>'}
+          </div>
+        </div>` : ''}
+        ${myBooking ? `
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:rgba(46,125,50,0.05);border-radius:10px;border:1px solid var(--accent-light)">
+          <span style="font-size:1.2rem;line-height:1">✅</span>
+          <div>
+            <div style="font-size:0.72rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">你的回應</div>
+            <div style="font-size:0.85rem">已勾選 ${(myBooking.slot_ids||[]).length} 個時段${myBooking.attendees > 1 ? `，出席 ${myBooking.attendees} 人` : ''}</div>
+          </div>
+        </div>` : ''}
+      </div>
+
+      <!-- 操作按鈕 -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${slot ? `<button class="btn btn-primary btn-sm" style="flex:1;min-width:140px" onclick="exportToOutlook('${escAttr(m.title)}','${escAttr(m.description||'')}','${escAttr(m.meeting_url||m.location)}','${slot.slot_date}','${slot.slot_start}','${slot.slot_end}','${escAttr(m.organizer)}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="2" stroke="white" stroke-width="2"/><path d="M3 9h18" stroke="white" stroke-width="2"/><path d="M8 2v4M16 2v4" stroke="white" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="2" fill="white"/></svg>
+          加入行事曆
+        </button>` : ''}
+        <button class="btn btn-outline btn-sm" style="flex:1;min-width:100px" onclick="closeModal('modal-meeting-detail');openShareModal('${m.id}')">🔗 分享連結</button>
+        ${isOwner ? `<button class="btn btn-outline btn-sm" style="flex:1;min-width:100px" onclick="closeModal('modal-meeting-detail');openStatsModal('${m.id}','${escAttr(m.title)}')">📊 查看統計</button>` : ''}
+      </div>
+    `;
   }
 
   // ── 分享 Modal ──
@@ -1555,23 +1699,110 @@
   }
 
   async function confirmSlot(meetingId, slotId) {
-    if (!confirm('確認選擇此時段作為最終會議時間？確認後所有人將看到結果。')) return;
+    if (!confirm('確認選擇此時段作為最終會議時間？確認後將發送 Email 通知所有填寫者。')) return;
     const { error } = await sb.from('meetings').update({ confirmed_slot_id: slotId }).eq('id', meetingId);
     if (error) return toast(error.message, 'error');
-    toast('已確認最終時段！所有人的「會議行程」將顯示結果 ✓');
+    toast('已確認最終時段！正在發送通知…');
     closeModal('modal-stats');
     loadMeetings();
 
-    // 詢問是否要匯出到 Outlook
+    // 取得會議、時段、所有 bookings 的 email
     const { data: slot } = await sb.from('time_slots').select('*').eq('id', slotId).single();
-    const { data: mtg } = await sb.from('meetings').select('title,description,location,organizer').eq('id', meetingId).single();
-    if (slot && mtg) {
-      setTimeout(() => {
-        if (confirm(`是否要將此會議加入到 Outlook 行事曆？\n\n📅 ${mtg.title}\n🕐 ${formatDate(slot.slot_date)} ${slot.slot_start.slice(0,5)} – ${slot.slot_end.slice(0,5)}\n📍 ${mtg.location}`)) {
-          exportToOutlook(mtg.title, mtg.description||'', mtg.location, slot.slot_date, slot.slot_start, slot.slot_end, mtg.organizer);
-        }
-      }, 400);
+    const { data: mtg }  = await sb.from('meetings').select('*').eq('id', meetingId).single();
+    const { data: bookings } = await sb.from('bookings').select('user_name,user_email').eq('meeting_id', meetingId);
+
+    if (!slot || !mtg) return;
+
+    // 傳送 email 通知
+    await sendMeetingNotifications(mtg, slot, bookings || []);
+
+    // 詢問是否匯出到 Outlook
+    setTimeout(() => {
+      if (confirm(`是否要將此會議加入到 Outlook 行事曆？\n\n📅 ${mtg.title}\n🕐 ${formatDate(slot.slot_date)} ${slot.slot_start.slice(0,5)} – ${slot.slot_end.slice(0,5)}\n📍 ${mtg.meeting_url || mtg.location}`)) {
+        exportToOutlook(mtg.title, mtg.description||'', mtg.meeting_url || mtg.location, slot.slot_date, slot.slot_start, slot.slot_end, mtg.organizer);
+      }
+    }, 400);
+  }
+
+  // ── Email 通知（EmailJS）──
+  // 請至 https://www.emailjs.com 申請帳號，設定 Service + Template，填入以下三個值
+  const EMAILJS_PUBLIC_KEY  = 'YOUR_PUBLIC_KEY';   // Account → API Keys
+  const EMAILJS_SERVICE_ID  = 'YOUR_SERVICE_ID';   // Email Services
+  const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';  // Email Templates
+
+  async function sendMeetingNotifications(mtg, slot, bookings) {
+    // 如果尚未設定 EmailJS，顯示說明並跳過
+    if (EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY') {
+      toast('⚠️ 尚未設定 EmailJS，Email 通知未送出', 'error');
+      showEmailjsSetupHint();
+      return;
     }
+
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+
+    const dateStr = `${formatDate(slot.slot_date)} ${slot.slot_start.slice(0,5)} – ${slot.slot_end.slice(0,5)}`;
+    const locationStr = mtg.meeting_url
+      ? `線上會議：${mtg.meeting_url}`
+      : `📍 ${mtg.location}`;
+
+    let successCount = 0;
+    const targets = bookings.filter(b => b.user_email);
+    for (const b of targets) {
+      try {
+        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+          to_name:      b.user_name || b.user_email,
+          to_email:     b.user_email,
+          meeting_title: mtg.title,
+          organizer:    mtg.organizer,
+          meeting_date: dateStr,
+          location:     locationStr,
+          description:  mtg.description || '',
+          meeting_url:  mtg.meeting_url || '',
+        });
+        successCount++;
+      } catch(e) {
+        console.warn('EmailJS 送出失敗:', b.user_email, e);
+      }
+    }
+    if (successCount > 0) {
+      toast(`✅ 已成功通知 ${successCount} 位與會者`);
+    } else if (targets.length > 0) {
+      toast('⚠️ Email 發送失敗，請確認 EmailJS 設定', 'error');
+    }
+  }
+
+  function showEmailjsSetupHint() {
+    const old = document.getElementById('emailjs-hint');
+    if (old) old.remove();
+    const el = document.createElement('div');
+    el.id = 'emailjs-hint';
+    el.style.cssText = `
+      position:fixed;bottom:80px;right:24px;z-index:9999;
+      background:var(--surface);border:1px solid var(--border);border-radius:14px;
+      padding:20px 24px;max-width:360px;box-shadow:0 12px 40px rgba(46,125,50,0.15);
+      animation:fadeUp 0.3s ease both;
+    `;
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-weight:600;font-size:0.95rem">📧 設定 Email 通知</span>
+        <button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem">×</button>
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);line-height:1.6;margin-bottom:12px">
+        請至 <a href="https://www.emailjs.com" target="_blank" style="color:var(--accent)">emailjs.com</a> 免費申請帳號，<br>
+        建立 Email Service 和 Template 後，<br>
+        在程式碼中填入三個設定值：
+      </p>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:0.75rem;font-family:monospace;color:var(--accent);line-height:2">
+        EMAILJS_PUBLIC_KEY<br>
+        EMAILJS_SERVICE_ID<br>
+        EMAILJS_TEMPLATE_ID
+      </div>
+      <p style="font-size:0.75rem;color:var(--text-muted);margin-top:10px">
+        Template 變數：<code style="font-size:0.72rem">to_name, to_email, meeting_title, organizer, meeting_date, location, description</code>
+      </p>
+    `;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 15000);
   }
 
   // ── Outlook 行事曆匯出 ──
@@ -1809,13 +2040,11 @@
     const { data: myBk } = await sb.from('bookings').select('*').eq('user_id', currentUser.id);
     (myBk || []).forEach(b => { myBookingMap[b.meeting_id] = b; });
 
-    if (currentTab === 'mine') {
-      // 取得所有確認時段的名稱
-      const confirmedSlotIds = meetings.map(m => m.confirmed_slot_id).filter(Boolean);
-      if (confirmedSlotIds.length) {
-        const { data: confirmedSlots } = await sb.from('time_slots').select('*').in('id', confirmedSlotIds);
-        (confirmedSlots || []).forEach(s => { slotNameMap[s.id] = s; });
-      }
+    // 兩個 tab 都需要載入確認時段（卡片要顯示已確認時間）
+    const confirmedSlotIds = meetings.map(m => m.confirmed_slot_id).filter(Boolean);
+    if (confirmedSlotIds.length) {
+      const { data: confirmedSlots } = await sb.from('time_slots').select('*').in('id', confirmedSlotIds);
+      (confirmedSlots || []).forEach(s => { slotNameMap[s.id] = s; });
     }
 
     container.innerHTML = '<div class="meetings-grid">' +
@@ -1826,10 +2055,25 @@
         const myBooking = myBookingMap[m.id];
         const hasVoted = !!myBooking;
         const canVote = !isClosed && !confirmedSlot;
+        const isOwner = m.created_by === currentUser.id;
+
+        // 截止時間只在「未確認」時顯示
+        const deadlineHtml = (!confirmedSlot && deadline) ? `<div style="font-size:0.82rem;padding:6px 10px;border-radius:6px;margin-bottom:10px;display:inline-flex;align-items:center;gap:5px;${isClosed ? 'background:rgba(248,113,113,0.1);color:var(--danger);border:1px solid rgba(248,113,113,0.3)' : 'background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3)'}">⏱ ${isClosed ? '投票已截止：' : '截止日期：'}${deadline.toLocaleDateString('zh-TW', {year:'numeric',month:'numeric',day:'numeric'})} ${deadline.toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'})}</div>` : '';
+
+        // 已確認時的橫幅（可點擊查看詳情）
+        const confirmedBanner = confirmedSlot ? `
+          <div class="confirmed-banner" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:6px" onclick="openMeetingDetail('${m.id}')">
+            <div style="display:flex;align-items:center;gap:6px;font-weight:600">
+              📅 最終會議時間已確認
+              <span style="font-size:0.72rem;background:rgba(46,125,50,0.15);padding:2px 7px;border-radius:10px">點擊查看完整資訊</span>
+            </div>
+            <div style="font-size:0.88rem">${formatDate(confirmedSlot.slot_date)} &nbsp;${confirmedSlot.slot_start.slice(0,5)} – ${confirmedSlot.slot_end.slice(0,5)}</div>
+          </div>` : '';
+
         return `
-        <div class="meeting-card">
+        <div class="meeting-card${confirmedSlot ? ' meeting-card-confirmed' : ''}">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
-            <h3 style="margin:0">${escHtml(m.title)}</h3>
+            <h3 style="margin:0;cursor:${confirmedSlot ? 'pointer' : 'default'}" ${confirmedSlot ? `onclick="openMeetingDetail('${m.id}')"` : ''}>${escHtml(m.title)}</h3>
             <div style="display:flex;gap:6px;flex-shrink:0">
               ${confirmedSlot ? `<span class="badge badge-confirmed">✓ 已確認</span>` : ''}
               ${!confirmedSlot && isClosed ? `<span class="badge badge-closed">⏰ 已截止</span>` : ''}
@@ -1842,16 +2086,17 @@
             <span>${renderLocationMeta(m)}</span>
             <span>🕐 建立於 ${new Date(m.created_at).toLocaleDateString('zh-TW')}</span>
           </div>
-          ${deadline ? `<div style="font-size:0.82rem;padding:6px 10px;border-radius:6px;margin-bottom:10px;display:inline-flex;align-items:center;gap:5px;${isClosed ? 'background:rgba(248,113,113,0.1);color:var(--danger);border:1px solid rgba(248,113,113,0.3)' : 'background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3)'}">⏱ ${isClosed ? '投票已截止：' : '截止日期：'}${deadline.toLocaleDateString('zh-TW', {year:'numeric',month:'numeric',day:'numeric'})} ${deadline.toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'})}</div>` : ''}
+          ${deadlineHtml}
           ${m.description ? `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">${escHtml(m.description)}</p>` : ''}
-          ${confirmedSlot ? `<div class="confirmed-banner">📅 最終會議時間：${formatDate(confirmedSlot.slot_date)} ${confirmedSlot.slot_start.slice(0,5)} – ${confirmedSlot.slot_end.slice(0,5)}</div>` : ''}
-          ${currentTab === 'mine' && myBooking ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px">你的回應：已勾選 ${(myBooking.slot_ids||[]).length} 個時段</div>` : ''}
+          ${confirmedBanner}
+          ${currentTab === 'mine' && myBooking && !confirmedSlot ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px">你的回應：已勾選 ${(myBooking.slot_ids||[]).length} 個時段</div>` : ''}
           <div class="meeting-actions">
             ${canVote ? `<button class="btn btn-primary btn-sm" onclick="openBookModal('${m.id}', '${escAttr(m.title)}', '${escAttr(m.description || '')}')">${hasVoted ? '✏️ 修改回應' : '填寫時段'}</button>` : ''}
+            ${confirmedSlot ? `<button class="btn btn-primary btn-sm" onclick="openMeetingDetail('${m.id}')">📋 會議詳情</button>` : ''}
             <button class="btn-share" onclick="openShareModal('${m.id}')">🔗 分享</button>
-            ${confirmedSlot ? `<button class="btn-outlook" onclick="exportToOutlook('${escAttr(m.title)}','${escAttr(m.description||'')}','${escAttr(m.location)}','${confirmedSlot.slot_date}','${confirmedSlot.slot_start}','${confirmedSlot.slot_end}','${escAttr(m.organizer)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="17" rx="2" stroke="#0078d4" stroke-width="2"/><path d="M3 9h18" stroke="#0078d4" stroke-width="2"/><path d="M8 2v4M16 2v4" stroke="#0078d4" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="2" fill="#0078d4"/></svg>加入 Outlook</button>` : ''}
-            ${m.created_by === currentUser.id ? `<button class="btn btn-outline btn-sm" onclick="openStatsModal('${m.id}', '${escAttr(m.title)}')">📊 統計</button>` : ''}
-            ${m.created_by === currentUser.id ? `<button class="btn btn-danger btn-sm" onclick="deleteMeeting('${m.id}')">刪除</button>` : ''}
+            ${confirmedSlot ? `<button class="btn-outlook" onclick="exportToOutlook('${escAttr(m.title)}','${escAttr(m.description||'')}','${escAttr(m.meeting_url || m.location)}','${confirmedSlot.slot_date}','${confirmedSlot.slot_start}','${confirmedSlot.slot_end}','${escAttr(m.organizer)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="17" rx="2" stroke="#0078d4" stroke-width="2"/><path d="M3 9h18" stroke="#0078d4" stroke-width="2"/><path d="M8 2v4M16 2v4" stroke="#0078d4" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="2" fill="#0078d4"/></svg>加入 Outlook</button>` : ''}
+            ${isOwner ? `<button class="btn btn-outline btn-sm" onclick="openStatsModal('${m.id}', '${escAttr(m.title)}')">📊 統計</button>` : ''}
+            ${isOwner ? `<button class="btn btn-danger btn-sm" onclick="deleteMeeting('${m.id}')">刪除</button>` : ''}
           </div>
         </div>`;
       }).join('') + '</div>';
@@ -2281,3 +2526,4 @@
 </script>
 </body>
 </html>
+  
