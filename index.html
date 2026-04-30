@@ -647,8 +647,8 @@
     </div>
 
     <div class="tabs">
-      <div class="tab active" data-tab="all">全部會議</div>
-      <div class="tab" data-tab="mine">我的預約</div>
+      <div class="tab active" data-tab="all">我創建的會議</div>
+      <div class="tab" data-tab="mine">會議行程</div>
     </div>
 
     <div id="meetings-container">
@@ -694,7 +694,7 @@
         <span id="nm-deadline-text"></span>
         <button type="button" onclick="clearDeadline()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.8rem;padding:0 4px">✕ 清除</button>
       </div>
-      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">截止後投票自動關閉，該會議從「全部會議」列表移除</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">截止後投票自動關閉，該會議從「我創建的會議」列表移除</div>
     </div>
 
     <div class="form-group">
@@ -755,7 +755,7 @@
     <span class="navbar-brand" style="cursor:pointer" onclick="goHome()">會議預約平台</span>
     <div class="navbar-right">
       <span class="user-badge" id="invite-user-badge" style="display:none"></span>
-      <button class="btn btn-outline btn-sm" id="btn-invite-mymeetings" style="display:none" onclick="openMyMeetingsPanel()">📋 我的預約</button>
+      <button class="btn btn-outline btn-sm" id="btn-invite-mymeetings" style="display:none" onclick="openMyMeetingsPanel()">📋 會議行程</button>
       <button class="btn btn-outline btn-sm" id="btn-invite-home" style="display:none" onclick="goHome()">🏠 回首頁</button>
       <button class="btn btn-outline btn-sm" id="btn-invite-logout" style="display:none">登出</button>
     </div>
@@ -1300,7 +1300,7 @@
     if (!confirm('確認選擇此時段作為最終會議時間？確認後所有人將看到結果。')) return;
     const { error } = await sb.from('meetings').update({ confirmed_slot_id: slotId }).eq('id', meetingId);
     if (error) return toast(error.message, 'error');
-    toast('已確認最終時段！所有人的「我的預約」將顯示結果 ✓');
+    toast('已確認最終時段！所有人的「會議行程」將顯示結果 ✓');
     closeModal('modal-stats');
     loadMeetings();
 
@@ -1523,28 +1523,21 @@
     const now = new Date();
 
     if (currentTab === 'all') {
-      // 全部會議：
-      // 隱藏條件（非自己建立）：已截止（不論是否確認）
-      // 自己建立的永遠顯示
-      meetings = meetings.filter(m => {
-        if (m.created_by === currentUser.id) return true; // 自己建立的永遠顯示
-        const deadline = m.vote_deadline ? new Date(m.vote_deadline) : null;
-        if (deadline && now > deadline) return false; // 已截止（含已確認）→ 隱藏
-        return true;
-      });
+      // 我創建的會議：只顯示自己建立的
+      meetings = meetings.filter(m => m.created_by === currentUser.id);
     } else if (currentTab === 'mine') {
       const { data: b } = await sb.from('bookings').select('meeting_id').eq('user_id', currentUser.id);
       bookings = b || [];
       const myIds = new Set(bookings.map(b => b.meeting_id));
-      // 也包含自己建立的會議
-      meetings = meetings.filter(m => myIds.has(m.id) || m.created_by === currentUser.id);
+      // 會議行程：自己投票過的（排除自己建立的，那個在「我創建的會議」）
+      meetings = meetings.filter(m => myIds.has(m.id) && m.created_by !== currentUser.id);
     }
 
     if (!meetings.length) {
       container.innerHTML = `
         <div class="empty-state">
           <div class="icon">📅</div>
-          <p>${currentTab === 'mine' ? '你還沒有預約任何會議' : '目前沒有會議'}</p>
+          <p>${currentTab === 'mine' ? '你還沒有任何會議行程' : '你還沒有建立任何會議'}</p>
           ${currentTab === 'all' ? '<button class="btn btn-primary btn-sm" onclick="openModal(\'modal-new-meeting\')">建立第一個會議</button>' : ''}
         </div>`;
       return;
@@ -1874,3 +1867,4 @@
 </script>
 </body>
 </html>
+
