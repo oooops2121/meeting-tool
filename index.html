@@ -1642,8 +1642,8 @@
       const { data: b } = await sb.from('bookings').select('meeting_id').eq('user_id', currentUser.id);
       bookings = b || [];
       const myIds = new Set(bookings.map(b => b.meeting_id));
-      // 會議行程：自己投票過的（排除自己建立的，那個在「我創建的會議」）
-      meetings = meetings.filter(m => myIds.has(m.id) && m.created_by !== currentUser.id);
+      // 會議行程：自己投票過的所有會議（包含自己建立但也有投票的）
+      meetings = meetings.filter(m => myIds.has(m.id));
     }
 
     if (!meetings.length) {
