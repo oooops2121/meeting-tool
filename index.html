@@ -842,6 +842,17 @@
       使用 Google 帳號登入
     </button>
 
+    <!-- WebView 警告（偵測到 LINE/FB 等內建瀏覽器時顯示） -->
+    <div id="webview-warning" style="display:none;margin-top:14px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.5);border-radius:12px;padding:16px;text-align:left">
+      <div style="font-size:0.88rem;font-weight:600;color:#b45309;margin-bottom:6px">⚠️ 請用瀏覽器開啟</div>
+      <div style="font-size:0.8rem;color:#92400e;line-height:1.6;margin-bottom:12px">
+        目前在 App 內建瀏覽器中，Google 不允許在此登入。<br>請點下方按鈕，用 Safari 或 Chrome 開啟。
+      </div>
+      <button id="btn-open-browser" style="width:100%;background:#b45309;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit">
+        🌐 在瀏覽器中開啟
+      </button>
+    </div>
+
     <div class="divider">或用 Email 登入</div>
 
     <div id="email-login-form">
@@ -1046,6 +1057,12 @@
           <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
           使用 Google 帳號登入
         </button>
+        <!-- WebView 警告 -->
+        <div id="invite-webview-warning" style="display:none;margin-top:14px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.5);border-radius:12px;padding:16px;text-align:left;max-width:300px;margin-left:auto;margin-right:auto">
+          <div style="font-size:0.88rem;font-weight:600;color:#b45309;margin-bottom:6px">⚠️ 請用瀏覽器開啟</div>
+          <div style="font-size:0.8rem;color:#92400e;line-height:1.6;margin-bottom:12px">目前在 App 內建瀏覽器中，Google 不允許在此登入。請點下方按鈕，用 Safari 或 Chrome 開啟。</div>
+          <button id="btn-invite-open-browser" style="width:100%;background:#b45309;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit">🌐 在瀏覽器中開啟</button>
+        </div>
       </div>
     </div>
     <div id="invite-form-section" style="display:none">
@@ -1967,6 +1984,58 @@
       toast('已下載 .ics 檔案，雙擊即可匯入 Outlook 📅');
     });
   }
+
+  // ── WebView 偵測 ──
+  function isWebView() {
+    const ua = navigator.userAgent || '';
+    return (
+      /FBAN|FBAV|FB_IAB/i.test(ua) ||       // Facebook
+      /Line\//i.test(ua) ||                  // LINE
+      /Instagram/i.test(ua) ||               // Instagram
+      /\bwv\b/.test(ua) ||                   // Android WebView
+      /Twitter/i.test(ua) ||                 // Twitter
+      (/iPhone|iPod|iPad/.test(ua) && !/Safari/.test(ua) && /AppleWebKit/.test(ua)) // iOS WebView (no Safari)
+    );
+  }
+
+  function openInExternalBrowser() {
+    const url = window.location.href;
+    // iOS：嘗試用 safari:// scheme
+    const isIOS = /iPhone|iPod|iPad/.test(navigator.userAgent);
+    if (isIOS) {
+      window.location.href = 'googlechrome://' + url.replace(/^https?:\/\//, '');
+      // 如果 Chrome 沒安裝，0.5 秒後 fallback 到複製提示
+      setTimeout(() => {
+        navigator.clipboard?.writeText(url).catch(() => {});
+        toast('請複製網址，貼到 Safari 或 Chrome 開啟', 'error');
+      }, 500);
+    } else {
+      // Android：嘗試用 intent
+      window.location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+      setTimeout(() => {
+        navigator.clipboard?.writeText(url).catch(() => {});
+        toast('請複製網址，貼到 Chrome 開啟', 'error');
+      }, 500);
+    }
+  }
+
+  // 頁面載入時偵測 WebView，決定顯示哪個 UI
+  if (isWebView()) {
+    // 主登入頁
+    const googleBtn = document.getElementById('btn-google');
+    if (googleBtn) googleBtn.style.display = 'none';
+    const warning = document.getElementById('webview-warning');
+    if (warning) warning.style.display = 'block';
+
+    // 受邀者頁
+    const inviteGoogleBtn = document.getElementById('btn-invite-google');
+    if (inviteGoogleBtn) inviteGoogleBtn.style.display = 'none';
+    const inviteWarning = document.getElementById('invite-webview-warning');
+    if (inviteWarning) inviteWarning.style.display = 'block';
+  }
+
+  document.getElementById('btn-open-browser')?.addEventListener('click', openInExternalBrowser);
+  document.getElementById('btn-invite-open-browser')?.addEventListener('click', openInExternalBrowser);
 
   // ── Google 登入 ──
   document.getElementById('btn-google').addEventListener('click', async () => {
