@@ -1303,55 +1303,154 @@
     }
   }
 
-  // ── Outlook 行事曆匯出（.ics 格式）──
+  // ── Outlook 行事曆匯出 ──
+  // 支援新版（Microsoft 365 / Outlook.com 網頁深連結）和舊版（.ics 下載）
+
   function exportToOutlook(title, description, location, slotDate, slotStart, slotEnd, organizer) {
-    // 將日期時間轉成 iCal 格式 (YYYYMMDDTHHMMSS)
-    function toIcalDate(dateStr, timeStr) {
-      const [y, m, d] = dateStr.split('-');
-      const [h, min] = timeStr.split(':');
-      return `${y}${m.padStart(2,'0')}${d.padStart(2,'0')}T${h.padStart(2,'0')}${min.padStart(2,'0')}00`;
-    }
+    // 移除舊 popup
+    const old = document.getElementById('outlook-picker');
+    if (old) old.remove();
 
-    const dtStart = toIcalDate(slotDate, slotStart);
-    const dtEnd   = toIcalDate(slotDate, slotEnd);
-    const now     = new Date();
-    const stamp   = now.toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
-    const uid     = `meeting-${Date.now()}@clhmeetingtools`;
+    // 建立選擇 popup
+    const popup = document.createElement('div');
+    popup.id = 'outlook-picker';
+    popup.style.cssText = `
+      position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.6);animation:fadeIn 0.15s ease
+    `;
+    popup.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:340px;box-shadow:0 24px 60px rgba(0,0,0,0.5)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-family:'DM Serif Display',serif;font-size:1.1rem">加入 Outlook 行事曆</span>
+          <button onclick="document.getElementById('outlook-picker').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.3rem;line-height:1">×</button>
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:20px">請選擇你使用的 Outlook 版本</p>
 
-    // 跳脫 iCal 特殊字元
-    const esc = s => String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+        <div style="display:grid;gap:10px">
+          <!-- 新版：網頁版 / Microsoft 365 -->
+          <button id="btn-outlook-web" style="display:flex;align-items:center;gap:12px;background:rgba(0,120,212,0.08);border:1px solid rgba(0,120,212,0.4);border-radius:10px;padding:14px 16px;cursor:pointer;font-family:inherit;color:var(--text);text-align:left;transition:all 0.2s" onmouseover="this.style.background='rgba(0,120,212,0.18)'" onmouseout="this.style.background='rgba(0,120,212,0.08)'">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="2" width="10" height="10" rx="1.5" fill="#0078d4"/>
+              <rect x="13" y="2" width="9" height="10" rx="1.5" fill="#50e6ff"/>
+              <rect x="2" y="13" width="10" height="9" rx="1.5" fill="#50e6ff"/>
+              <rect x="13" y="13" width="9" height="9" rx="1.5" fill="#0078d4"/>
+            </svg>
+            <div>
+              <div style="font-size:0.88rem;font-weight:500;color:#60aaee">新版 Outlook（網頁版 / Microsoft 365）</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">直接在瀏覽器開啟 Outlook，點一下加入</div>
+            </div>
+          </button>
 
-    const icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//會議預約平台//TW',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
-      'BEGIN:VEVENT',
-      `UID:${uid}`,
-      `DTSTAMP:${stamp}`,
-      `DTSTART:${dtStart}`,
-      `DTEND:${dtEnd}`,
-      `SUMMARY:${esc(title)}`,
-      `DESCRIPTION:${esc(description + (organizer ? `\\n主辦人：${organizer}` : ''))}`,
-      `LOCATION:${esc(location)}`,
-      `ORGANIZER;CN=${esc(organizer)}:MAILTO:noreply@clhmeetingtools.com`,
-      'STATUS:CONFIRMED',
-      'TRANSP:OPAQUE',
-      'END:VEVENT',
-      'END:VCALENDAR'
-    ].join('\r\n');
+          <!-- 舊版：桌機版 .ics 下載 -->
+          <button id="btn-outlook-desktop" style="display:flex;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;font-family:inherit;color:var(--text);text-align:left;transition:all 0.2s" onmouseover="this.style.borderColor='#0078d4'" onmouseout="this.style.borderColor='var(--border)'">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="3" width="22" height="18" rx="2" fill="#0078d4"/>
+              <ellipse cx="12" cy="12" rx="6" ry="7" fill="white" opacity="0.95"/>
+              <text x="12" y="16" text-anchor="middle" font-size="8" font-weight="bold" fill="#0078d4" font-family="sans-serif">O</text>
+            </svg>
+            <div>
+              <div style="font-size:0.88rem;font-weight:500">舊版 Outlook（桌機版 2016/2019/2021）</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">下載 .ics 檔案，雙擊開啟即可匯入</div>
+            </div>
+          </button>
+        </div>
 
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `${title.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_')}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('已下載 .ics 檔案，用 Outlook 開啟即可加入行事曆 📅');
+        <p style="font-size:0.72rem;color:var(--text-muted);margin-top:14px;text-align:center">不確定版本？先試新版，不行再用舊版</p>
+      </div>
+    `;
+    document.body.appendChild(popup);
+    popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+
+    // ── 新版：組 Outlook Web 深連結 ──
+    document.getElementById('btn-outlook-web').addEventListener('click', () => {
+      popup.remove();
+
+      // 將本地日期時間視為台灣時間 (UTC+8) → 轉成 UTC ISO
+      function localToUTC(dateStr, timeStr) {
+        const [y,mo,d] = dateStr.split('-').map(Number);
+        const [h,min]  = timeStr.split(':').map(Number);
+        // UTC+8 → 減 8 小時
+        const utc = new Date(Date.UTC(y, mo-1, d, h-8, min, 0));
+        return utc.toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+      }
+
+      const start = localToUTC(slotDate, slotStart);
+      const end   = localToUTC(slotDate, slotEnd);
+      const params = new URLSearchParams({
+        path      : '/calendar/action/compose',
+        rru       : 'addevent',
+        startdt   : start,
+        enddt     : end,
+        subject   : title,
+        body      : `${description || ''}${organizer ? `\n主辦人：${organizer}` : ''}`,
+        location  : location || '',
+      });
+      const url = `https://outlook.live.com/calendar/0/action/compose?${params.toString()}`;
+      window.open(url, '_blank');
+      toast('已在新分頁開啟 Outlook 網頁版 📅');
+    });
+
+    // ── 舊版：下載 .ics ──
+    document.getElementById('btn-outlook-desktop').addEventListener('click', () => {
+      popup.remove();
+
+      function toIcalDate(dateStr, timeStr) {
+        const [y,m,d] = dateStr.split('-');
+        const [h,min] = timeStr.split(':');
+        return `${y}${m.padStart(2,'0')}${d.padStart(2,'0')}T${h.padStart(2,'0')}${min.padStart(2,'0')}00`;
+      }
+
+      const dtStart = toIcalDate(slotDate, slotStart);
+      const dtEnd   = toIcalDate(slotDate, slotEnd);
+      const stamp   = new Date().toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+      const uid     = `meeting-${Date.now()}@clhmeetingtools`;
+      const esc     = s => String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+
+      const descFull = esc((description||'') + (organizer ? `\n主辦人：${organizer}` : ''));
+
+      const icsLines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//會議預約平台//TW',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'X-WR-TIMEZONE:Asia/Taipei',
+        'BEGIN:VTIMEZONE',
+        'TZID:Asia/Taipei',
+        'BEGIN:STANDARD',
+        'DTSTART:19700101T000000',
+        'TZOFFSETFROM:+0800',
+        'TZOFFSETTO:+0800',
+        'TZNAME:CST',
+        'END:STANDARD',
+        'END:VTIMEZONE',
+        'BEGIN:VEVENT',
+        `UID:${uid}`,
+        `DTSTAMP:${stamp}`,
+        `DTSTART;TZID=Asia/Taipei:${dtStart}`,
+        `DTEND;TZID=Asia/Taipei:${dtEnd}`,
+        `SUMMARY:${esc(title)}`,
+        `DESCRIPTION:${descFull}`,
+        `LOCATION:${esc(location)}`,
+        ...(organizer ? [`ORGANIZER;CN="${esc(organizer)}":MAILTO:noreply@clhmeetingtools.com`] : []),
+        'STATUS:CONFIRMED',
+        'TRANSP:OPAQUE',
+        'END:VEVENT',
+        'END:VCALENDAR'
+      ];
+
+      const icsContent = icsLines.join('\r\n');
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `${(title||'meeting').replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_')}.ics`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('已下載 .ics 檔案，雙擊即可匯入 Outlook 📅');
+    });
   }
 
   // ── Google 登入 ──
