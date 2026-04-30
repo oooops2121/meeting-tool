@@ -819,7 +819,7 @@
         </div>
         <div id="my-meetings-list"><div class="loading"><div class="spinner"></div>載入中...</div></div>
         <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
-          <button class="btn btn-primary" onclick="goHome()">🏠 前往首頁管理所有會議</button>
+          <button class="btn btn-outline" onclick="sb.auth.signOut()">登出</button>
         </div>
       </div>
     </div>
@@ -907,20 +907,28 @@
   }
 
   // ── Auth state ──
+  // inviteOnly = 這個 session 是從分享連結進來的，只能看單一會議
+  let inviteOnly = false;
+
   sb.auth.onAuthStateChange(async (event, session) => {
     currentUser = session?.user ?? null;
     const inviteId = getInviteId();
     if (currentUser) {
       document.getElementById('user-email-badge').textContent = currentUser.email;
       if (inviteId) {
+        inviteOnly = true;
         sessionStorage.removeItem('pendingInviteId'); // 已用完，清掉
         showPage('invite');
         setupInvitePage(inviteId, currentUser);
+      } else if (inviteOnly) {
+        // 受邀者登出再登入，沒有 inviteId → 回登入頁，不給進主畫面
+        showPage('login');
       } else {
         showPage('app');
         loadMeetings();
       }
     } else {
+      inviteOnly = false;
       if (inviteId) {
         showPage('invite');
         setupInviteLogin(inviteId);
@@ -953,7 +961,12 @@
   // ── 回首頁 ──
   function goHome() {
     sessionStorage.removeItem('pendingInviteId');
-    window.location.href = 'https://oooops2121.github.io/meeting-tool/';
+    if (inviteOnly) {
+      // 受邀者「回首頁」只登出，不給進主列表
+      sb.auth.signOut();
+    } else {
+      window.location.href = 'https://oooops2121.github.io/meeting-tool/';
+    }
   }
 
   // ── 我的預約 側拉板 ──
@@ -1510,12 +1523,13 @@
     const now = new Date();
 
     if (currentTab === 'all') {
-      // 全部會議：過濾掉「已截止且尚未確認時段且非自己建立」的會議
+      // 全部會議：
+      // 隱藏條件（非自己建立）：已截止（不論是否確認）
+      // 自己建立的永遠顯示
       meetings = meetings.filter(m => {
         if (m.created_by === currentUser.id) return true; // 自己建立的永遠顯示
-        if (m.confirmed_slot_id) return true; // 已確認的永遠顯示
         const deadline = m.vote_deadline ? new Date(m.vote_deadline) : null;
-        if (deadline && now > deadline) return false; // 已截止且未確認 → 隱藏
+        if (deadline && now > deadline) return false; // 已截止（含已確認）→ 隱藏
         return true;
       });
     } else if (currentTab === 'mine') {
