@@ -881,6 +881,9 @@
   }
 
   function getInviteId() {
+    // 使用者主動按「回首頁」→ 不走 invite 流程
+    if (sessionStorage.getItem('forceHome') === '1') return null;
+
     // 1. 先從 URL hash 或 query string 取得
     const fromHash = window.location.hash.match(/invite=([^&]+)/);
     if (fromHash) {
@@ -921,6 +924,7 @@
         showPage('invite');
         setupInvitePage(inviteId, currentUser);
       } else {
+        sessionStorage.removeItem('forceHome'); // 成功進入 app，清掉旗標
         showPage('app');
         loadMeetings();
       }
@@ -930,7 +934,8 @@
         showPage('invite');
         setupInviteLogin(inviteId);
       } else {
-        sessionStorage.removeItem('pendingInviteId'); // 確保登出時清掉
+        sessionStorage.removeItem('pendingInviteId');
+        sessionStorage.removeItem('forceHome');
         showPage('login');
       }
     }
@@ -948,6 +953,7 @@
     document.getElementById('btn-invite-google').onclick = async () => {
       // 先存 inviteId，OAuth redirect 後 hash 會消失
       sessionStorage.setItem('pendingInviteId', meetingId);
+      sessionStorage.removeItem('forceHome'); // 確保走 invite 流程
       await sb.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: 'https://oooops2121.github.io/meeting-tool/' }
@@ -958,13 +964,9 @@
   // ── 回首頁 ──
   function goHome() {
     sessionStorage.removeItem('pendingInviteId');
-    if (inviteOnly) {
-      // 受邀者「回首頁」→ 清除 inviteOnly 狀態再登出，讓他們可以重新以正常身分登入
-      inviteOnly = false;
-      sb.auth.signOut();
-    } else {
-      window.location.href = 'https://oooops2121.github.io/meeting-tool/';
-    }
+    sessionStorage.setItem('forceHome', '1'); // 標記：使用者主動回首頁，下次登入進 app
+    inviteOnly = false;
+    sb.auth.signOut();
   }
 
   // ── 我的預約 側拉板 ──
