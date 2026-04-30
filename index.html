@@ -1205,14 +1205,10 @@
   let _pendingInviteId = null;
 
   // 初始化時先讀取一次 inviteId，存入模組變數
+  // 注意：不從 hash 讀，因為 hash 被 Supabase OAuth token 使用，會衝突
+  // 分享連結統一用 query string ?invite=xxx
   (function initInviteId() {
     if (sessionStorage.getItem('forceHome') === '1') return;
-    const fromHash = window.location.hash.match(/invite=([^&]+)/);
-    if (fromHash) {
-      _pendingInviteId = fromHash[1];
-      sessionStorage.setItem('pendingInviteId', fromHash[1]);
-      return;
-    }
     const fromQuery = new URLSearchParams(window.location.search).get('invite');
     if (fromQuery) {
       _pendingInviteId = fromQuery;
@@ -1227,8 +1223,6 @@
     if (sessionStorage.getItem('forceHome') === '1') return null;
     // 優先使用模組變數（避免多次觸發時 sessionStorage 已被清除）
     if (_pendingInviteId) return _pendingInviteId;
-    const fromHash = window.location.hash.match(/invite=([^&]+)/);
-    if (fromHash) return fromHash[1];
     const fromQuery = new URLSearchParams(window.location.search).get('invite');
     if (fromQuery) return fromQuery;
     return sessionStorage.getItem('pendingInviteId') || null;
@@ -1276,13 +1270,14 @@
       document.getElementById('invite-meeting-desc').textContent = m.description || '';
     }
     document.getElementById('btn-invite-google').onclick = async () => {
-      // 先存 inviteId，OAuth redirect 後 hash 會消失
+      // 把 inviteId 放進 redirectTo 的 query string，這樣 OAuth redirect 回來後還能讀到
       _pendingInviteId = meetingId;
       sessionStorage.setItem('pendingInviteId', meetingId);
-      sessionStorage.removeItem('forceHome'); // 確保走 invite 流程
+      sessionStorage.removeItem('forceHome');
+      const baseUrl = 'https://oooops2121.github.io/meeting-tool/';
       await sb.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: 'https://oooops2121.github.io/meeting-tool/' }
+        options: { redirectTo: `${baseUrl}?invite=${meetingId}` }
       });
     };
   }
@@ -1608,7 +1603,7 @@
 
   // ── 分享 Modal ──
   function openShareModal(meetingId) {
-    const url = `${location.origin}${location.pathname}#invite=${meetingId}`;
+    const url = `${location.origin}${location.pathname}?invite=${meetingId}`;
     document.getElementById('share-link-url').textContent = url;
     const btn = document.getElementById('btn-copy-link');
     btn.textContent = '複製'; btn.className = 'btn-copy';
@@ -2791,4 +2786,3 @@
 </script>
 </body>
 </html>
-  
