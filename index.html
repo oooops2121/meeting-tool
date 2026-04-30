@@ -917,12 +917,9 @@
       document.getElementById('user-email-badge').textContent = currentUser.email;
       if (inviteId) {
         inviteOnly = true;
-        sessionStorage.removeItem('pendingInviteId'); // 已用完，清掉
+        sessionStorage.removeItem('pendingInviteId');
         showPage('invite');
         setupInvitePage(inviteId, currentUser);
-      } else if (inviteOnly) {
-        // 受邀者登出再登入，沒有 inviteId → 回登入頁，不給進主畫面
-        showPage('login');
       } else {
         showPage('app');
         loadMeetings();
@@ -962,7 +959,8 @@
   function goHome() {
     sessionStorage.removeItem('pendingInviteId');
     if (inviteOnly) {
-      // 受邀者「回首頁」只登出，不給進主列表
+      // 受邀者「回首頁」→ 清除 inviteOnly 狀態再登出，讓他們可以重新以正常身分登入
+      inviteOnly = false;
       sb.auth.signOut();
     } else {
       window.location.href = 'https://oooops2121.github.io/meeting-tool/';
