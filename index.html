@@ -1657,6 +1657,42 @@
     const isClosed = deadline && now > deadline;
     const isConfirmed = !!mtg?.confirmed_slot_id;
 
+    // ── 渲染底部區塊（確認時段 or 已確認行事曆）──
+    let bottomSection = '';
+    if (!isConfirmed) {
+      const slotButtons = (slots||[])
+        .sort((a,b) => (slotCount[b.id]||0) - (slotCount[a.id]||0))
+        .map(s => `
+          <button onclick="confirmSlot('${meetingId}','${s.id}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer;font-family:inherit;color:var(--text);font-size:0.85rem;transition:all 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span>${formatDate(s.slot_date)} ${s.slot_start.slice(0,5)}–${s.slot_end.slice(0,5)}</span>
+            <span style="color:var(--accent2);font-size:0.78rem">${slotCount[s.id]||0} 人可以 → 點擊確認</span>
+          </button>`).join('');
+      bottomSection = `
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+          <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;font-weight:500">確認最終會議時段（確認後受邀者將看到結果）</div>
+          <div style="display:grid;gap:8px">${slotButtons}</div>
+        </div>`;
+    } else {
+      const cSlot = (slots||[]).find(s => s.id === mtg.confirmed_slot_id);
+      if (cSlot) {
+        const titleText = document.getElementById('stats-title').textContent.replace(' — 回應統計','');
+        bottomSection = `
+          <div class="outlook-export-section" style="margin-top:20px">
+            <h4>📅 新增已確認時段到行事曆</h4>
+            <div class="outlook-slots-list">
+              <div class="outlook-slot-row">
+                <span>${formatDate(cSlot.slot_date)} ${cSlot.slot_start.slice(0,5)} – ${cSlot.slot_end.slice(0,5)}</span>
+                <button class="btn-outlook" onclick="exportToOutlook('${escAttr(titleText)}','','','${cSlot.slot_date}','${cSlot.slot_start}','${cSlot.slot_end}','')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="2" stroke="#0078d4" stroke-width="2"/><path d="M3 9h18" stroke="#0078d4" stroke-width="2"/><path d="M8 2v4M16 2v4" stroke="#0078d4" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="2" fill="#0078d4"/></svg>
+                  加入 Outlook
+                </button>
+              </div>
+            </div>
+            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:10px">下載 .ics 檔案後，用 Outlook 開啟即可加入行事曆</div>
+          </div>`;
+      }
+    }
+
     document.getElementById('stats-body').innerHTML = `
       ${deadline ? `<div style="font-size:0.82rem;padding:6px 12px;border-radius:6px;margin-bottom:16px;display:inline-flex;align-items:center;gap:5px;${isClosed ? 'background:rgba(248,113,113,0.1);color:var(--danger);border:1px solid rgba(248,113,113,0.3)' : 'background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3)'}">⏱ ${isClosed ? '投票已截止：' : '截止日期：'}${deadline.toLocaleDateString('zh-TW', {year:'numeric',month:'numeric',day:'numeric'})} ${deadline.toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'})}</div>` : ''}
       <div class="stat-grid">
@@ -1695,61 +1731,36 @@
           </div>`;
         }).join('')}
       </div>
-      <div style="margin-top:16px">
+      <div style="margin-top:16px;margin-bottom:4px">
         <button onclick="downloadAttendeesExcel('${meetingId}')" style="display:inline-flex;align-items:center;gap:8px;background:rgba(46,125,50,0.08);border:1px solid var(--accent-light);border-radius:10px;padding:10px 18px;cursor:pointer;font-family:inherit;color:var(--accent);font-size:0.85rem;font-weight:500;transition:all 0.2s" onmouseover="this.style.background='rgba(46,125,50,0.16)'" onmouseout="this.style.background='rgba(46,125,50,0.08)'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="12" y2="18"/><line x1="15" y1="15" x2="12" y2="18"/></svg>
           下載參與者名單 Excel
         </button>
       </div>
-      ${!isConfirmed ? `<div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-        <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:10px;font-weight:500">確認最終會議時段（確認後受邀者將看到結果）</div>
-        <div style="display:grid;gap:8px">
-          ${(slots||[]).sort((a,b) => (slotCount[b.id]||0)-(slotCount[a.id]||0)).map(s => `
-            <button onclick="confirmSlot('${meetingId}','${s.id}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer;font-family:inherit;color:var(--text);font-size:0.85rem;transition:all 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-              <span>${formatDate(s.slot_date)} ${s.slot_start.slice(0,5)}–${s.slot_end.slice(0,5)}</span>
-              <span style="color:var(--accent2);font-size:0.78rem">${slotCount[s.id]||0} 人可以 → 點擊確認</span>
-            </button>`).join('')}
-        </div>
-      </div>` : (() => {
-        // 找到已確認的 slot
-        const cSlot = (slots||[]).find(s => s.id === mtg.confirmed_slot_id);
-        if (!cSlot) return '';
-        const { data: mtgFull } = { data: null }; // mtg already has title from stats-title
-        const title = document.getElementById('stats-title').textContent.replace(' — 回應統計','');
-        return `<div class="outlook-export-section" style="margin-top:20px">
-          <h4>📅 新增已確認時段到行事曆</h4>
-          <div class="outlook-slots-list">
-            <div class="outlook-slot-row">
-              <span>${formatDate(cSlot.slot_date)} ${cSlot.slot_start.slice(0,5)} – ${cSlot.slot_end.slice(0,5)}</span>
-              <button class="btn-outlook" onclick="exportToOutlook('${escAttr(title)}','','','${cSlot.slot_date}','${cSlot.slot_start}','${cSlot.slot_end}','')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="2" stroke="#0078d4" stroke-width="2"/><path d="M3 9h18" stroke="#0078d4" stroke-width="2"/><path d="M8 2v4M16 2v4" stroke="#0078d4" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="2" fill="#0078d4"/></svg>
-                加入 Outlook
-              </button>
-            </div>
-          </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:10px">下載 .ics 檔案後，用 Outlook 開啟即可加入行事曆</div>
-        </div>`;
-      })()}`;
+      ${bottomSection}`;
 
     document.getElementById('modal-stats').dataset.meetingId = meetingId;
   }
 
   async function confirmSlot(meetingId, slotId) {
     if (!confirm('確認選擇此時段作為最終會議時間？確認後將發送 Email 通知所有填寫者。')) return;
+
     const { error } = await sb.from('meetings').update({ confirmed_slot_id: slotId }).eq('id', meetingId);
     if (error) return toast(error.message, 'error');
+
     toast('已確認最終時段！正在發送通知…');
+
+    // 先取得所有資料再關 modal，避免 modal 關掉後資料遺失
+    const { data: slot }     = await sb.from('time_slots').select('*').eq('id', slotId).single();
+    const { data: mtg }      = await sb.from('meetings').select('*').eq('id', meetingId).single();
+    const { data: bookings } = await sb.from('bookings').select('*').eq('meeting_id', meetingId);
+
     closeModal('modal-stats');
     loadMeetings();
 
-    // 取得會議、時段、所有 bookings 的 email
-    const { data: slot } = await sb.from('time_slots').select('*').eq('id', slotId).single();
-    const { data: mtg }  = await sb.from('meetings').select('*').eq('id', meetingId).single();
-    const { data: bookings } = await sb.from('bookings').select('user_name,user_email').eq('meeting_id', meetingId);
-
     if (!slot || !mtg) return;
 
-    // 傳送 email 通知
+    // 傳送 email 通知給所有有填寫 email 的人
     await sendMeetingNotifications(mtg, slot, bookings || []);
 
     // 詢問是否匯出到 Outlook
@@ -1850,14 +1861,17 @@
   const EMAILJS_TEMPLATE_ID = 'template_eywlk1o';
 
   async function sendMeetingNotifications(mtg, slot, bookings) {
-    // 如果尚未設定 EmailJS，顯示說明並跳過
     if (EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY') {
       toast('⚠️ 尚未設定 EmailJS，Email 通知未送出', 'error');
       showEmailjsSetupHint();
       return;
     }
 
-    emailjs.init(EMAILJS_PUBLIC_KEY);
+    try {
+      emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+    } catch(e) {
+      console.error('EmailJS init 失敗:', e);
+    }
 
     const dateStr = `${formatDate(slot.slot_date)} ${slot.slot_start.slice(0,5)} – ${slot.slot_end.slice(0,5)}`;
     const locationStr = mtg.meeting_url
@@ -1865,28 +1879,37 @@
       : `📍 ${mtg.location}`;
 
     let successCount = 0;
+    let lastError = null;
     const targets = bookings.filter(b => b.user_email);
+
     for (const b of targets) {
       try {
-        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-          to_name:      b.user_name || b.user_email,
-          to_email:     b.user_email,
+        const result = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+          to_name:       b.user_name || b.user_email,
+          to_email:      b.user_email,
           meeting_title: mtg.title,
-          organizer:    mtg.organizer,
-          meeting_date: dateStr,
-          location:     locationStr,
-          description:  mtg.description || '',
-          meeting_url:  mtg.meeting_url || '',
+          organizer:     mtg.organizer,
+          meeting_date:  dateStr,
+          location:      locationStr,
+          description:   mtg.description || '',
+          meeting_url:   mtg.meeting_url || '',
         });
+        console.log('EmailJS 成功:', b.user_email, result);
         successCount++;
       } catch(e) {
-        console.warn('EmailJS 送出失敗:', b.user_email, e);
+        lastError = e;
+        console.error('EmailJS 送出失敗:', b.user_email, e);
       }
     }
+
     if (successCount > 0) {
       toast(`✅ 已成功通知 ${successCount} 位與會者`);
     } else if (targets.length > 0) {
-      toast('⚠️ Email 發送失敗，請確認 EmailJS 設定', 'error');
+      const errMsg = lastError?.text || lastError?.message || JSON.stringify(lastError) || '未知錯誤';
+      toast(`⚠️ Email 發送失敗：${errMsg}`, 'error');
+      console.error('最後一筆錯誤詳情:', lastError);
+    } else {
+      toast('⚠️ 沒有找到任何參與者 Email', 'error');
     }
   }
 
