@@ -1188,25 +1188,6 @@
     el._t = setTimeout(() => el.className = '', 3000);
   }
 
-  function getInviteId() {
-    // 使用者主動按「回首頁」→ 不走 invite 流程
-    if (sessionStorage.getItem('forceHome') === '1') return null;
-
-    // 1. 先從 URL hash 或 query string 取得
-    const fromHash = window.location.hash.match(/invite=([^&]+)/);
-    if (fromHash) {
-      sessionStorage.setItem('pendingInviteId', fromHash[1]);
-      return fromHash[1];
-    }
-    const fromQuery = new URLSearchParams(window.location.search).get('invite');
-    if (fromQuery) {
-      sessionStorage.setItem('pendingInviteId', fromQuery);
-      return fromQuery;
-    }
-    // 2. OAuth redirect 後 hash 消失，從 sessionStorage 救回
-    return sessionStorage.getItem('pendingInviteId') || null;
-  }
-
   function showPage(page) {
     ['login-page','app','invite-page'].forEach(id => {
       const el = document.getElementById(id);
@@ -1220,6 +1201,38 @@
   // ── Auth state ──
   // inviteOnly = 這個 session 是從分享連結進來的，只能看單一會議
   let inviteOnly = false;
+  // 用模組級變數保存 inviteId，避免 onAuthStateChange 多次觸發時遺失
+  let _pendingInviteId = null;
+
+  // 初始化時先讀取一次 inviteId，存入模組變數
+  (function initInviteId() {
+    if (sessionStorage.getItem('forceHome') === '1') return;
+    const fromHash = window.location.hash.match(/invite=([^&]+)/);
+    if (fromHash) {
+      _pendingInviteId = fromHash[1];
+      sessionStorage.setItem('pendingInviteId', fromHash[1]);
+      return;
+    }
+    const fromQuery = new URLSearchParams(window.location.search).get('invite');
+    if (fromQuery) {
+      _pendingInviteId = fromQuery;
+      sessionStorage.setItem('pendingInviteId', fromQuery);
+      return;
+    }
+    _pendingInviteId = sessionStorage.getItem('pendingInviteId') || null;
+  })();
+
+  function getInviteId() {
+    // 使用者主動按「回首頁」→ 不走 invite 流程
+    if (sessionStorage.getItem('forceHome') === '1') return null;
+    // 優先使用模組變數（避免多次觸發時 sessionStorage 已被清除）
+    if (_pendingInviteId) return _pendingInviteId;
+    const fromHash = window.location.hash.match(/invite=([^&]+)/);
+    if (fromHash) return fromHash[1];
+    const fromQuery = new URLSearchParams(window.location.search).get('invite');
+    if (fromQuery) return fromQuery;
+    return sessionStorage.getItem('pendingInviteId') || null;
+  }
 
   sb.auth.onAuthStateChange(async (event, session) => {
     currentUser = session?.user ?? null;
@@ -1228,7 +1241,9 @@
       document.getElementById('user-email-badge').textContent = currentUser.email;
       if (inviteId) {
         inviteOnly = true;
+        // 清除後備存儲，但保留模組變數直到頁面完成初始化
         sessionStorage.removeItem('pendingInviteId');
+        _pendingInviteId = null;
         showPage('invite');
         setupInvitePage(inviteId, currentUser);
       } else {
@@ -1245,6 +1260,7 @@
       } else {
         sessionStorage.removeItem('pendingInviteId');
         sessionStorage.removeItem('forceHome');
+        _pendingInviteId = null;
         showPage('login');
       }
     }
@@ -1261,6 +1277,7 @@
     }
     document.getElementById('btn-invite-google').onclick = async () => {
       // 先存 inviteId，OAuth redirect 後 hash 會消失
+      _pendingInviteId = meetingId;
       sessionStorage.setItem('pendingInviteId', meetingId);
       sessionStorage.removeItem('forceHome'); // 確保走 invite 流程
       await sb.auth.signInWithOAuth({
@@ -1274,6 +1291,7 @@
   function goHome() {
     sessionStorage.removeItem('pendingInviteId');
     sessionStorage.removeItem('forceHome');
+    _pendingInviteId = null;
     inviteOnly = false;
     // 不登出，直接切回 app 頁
     if (currentUser) {
@@ -2773,3 +2791,4 @@
 </script>
 </body>
 </html>
+  
