@@ -701,6 +701,107 @@
       padding: 10px 14px;
       font-size: 0.85rem;
     }
+
+    /* ── 會議形式切換 ── */
+    .meeting-type-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .type-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .type-btn:hover {
+      border-color: var(--accent-light);
+      color: var(--accent);
+      background: var(--accent-pale);
+    }
+    .type-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-pale);
+      color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(46,125,50,0.08);
+    }
+    .type-icon { font-size: 1rem; }
+
+    /* ── 地圖相關按鈕 ── */
+    .btn-map-preview {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-family: inherit;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-map-preview:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-pale); }
+
+    .btn-map-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.8rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--accent-light);
+      transition: all 0.2s;
+    }
+    .btn-map-link:hover { background: var(--accent-pale); }
+
+    /* ── 地圖建議下拉 ── */
+    .map-suggestions {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(46,125,50,0.1);
+      z-index: 500;
+      overflow: hidden;
+    }
+    .map-suggestion-item {
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-bottom: 1px solid var(--border);
+    }
+    .map-suggestion-item:last-child { border-bottom: none; }
+    .map-suggestion-item:hover { background: var(--accent-pale); color: var(--accent); }
+    .map-suggestion-main { font-weight: 500; }
+    .map-suggestion-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
+
+    /* ── 線上會議連結顯示 ── */
+    .online-link-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
   </style>
 </head>
 <body>
@@ -783,8 +884,46 @@
       <input type="text" id="nm-organizer" placeholder="王小明" />
     </div>
     <div class="form-group">
-      <label>地點 *</label>
-      <input type="text" id="nm-location" placeholder="B1 會議室 / Google Meet" />
+      <label>會議形式 *</label>
+      <div class="meeting-type-toggle" id="nm-type-toggle">
+        <button type="button" class="type-btn active" data-type="physical" onclick="switchMeetingType('physical', this)">
+          <span class="type-icon">🏢</span> 實體會議
+        </button>
+        <button type="button" class="type-btn" data-type="online" onclick="switchMeetingType('online', this)">
+          <span class="type-icon">💻</span> 線上會議
+        </button>
+      </div>
+    </div>
+
+    <!-- 實體會議欄位 -->
+    <div id="nm-physical-fields">
+      <div class="form-group">
+        <label>地點 *</label>
+        <div style="position:relative">
+          <input type="text" id="nm-location" placeholder="例：台北市信義區松高路1號 B1 會議室" oninput="onLocationInput()" onblur="hideSuggestions()" />
+          <div id="nm-location-suggestions" class="map-suggestions" style="display:none"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" id="nm-map-preview-btn" class="btn-map-preview" onclick="previewMap()" style="display:none">
+            🗺️ 預覽地圖
+          </button>
+          <a id="nm-map-link" href="#" target="_blank" class="btn-map-link" style="display:none">
+            📍 在 Google Maps 開啟
+          </a>
+        </div>
+        <div id="nm-map-embed" style="display:none;margin-top:10px;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
+          <iframe id="nm-map-iframe" width="100%" height="200" style="border:none" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src=""></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- 線上會議欄位 -->
+    <div id="nm-online-fields" style="display:none">
+      <div class="form-group">
+        <label>會議連結 *</label>
+        <input type="url" id="nm-online-url" placeholder="https://meet.google.com/xxx-xxxx-xxx" />
+        <div id="nm-online-platform" style="display:none;margin-top:8px;font-size:0.8rem;color:var(--accent);display:flex;align-items:center;gap:5px"></div>
+      </div>
     </div>
     <div class="form-group">
       <label>說明</label>
@@ -1117,7 +1256,7 @@
 
       let statusHtml = '';
       if (confirmedSlot) {
-        statusHtml = `<div style="margin-top:8px;background:rgba(124,106,247,0.1);border:1px solid var(--accent);border-radius:6px;padding:8px 10px;font-size:0.8rem;color:var(--accent2)">
+        statusHtml = `<div style="margin-top:8px;background:rgba(46,125,50,0.08);border:1px solid var(--accent-light);border-radius:6px;padding:8px 10px;font-size:0.8rem;color:var(--accent)">
           📅 已確認：${formatDate(confirmedSlot.slot_date)} ${confirmedSlot.slot_start.slice(0,5)}–${confirmedSlot.slot_end.slice(0,5)}
         </div>`;
       } else if (isClosed) {
@@ -1126,9 +1265,13 @@
         statusHtml = `<div style="margin-top:6px;font-size:0.78rem;color:var(--success)">● 投票中${deadline ? '，截止 ' + deadline.toLocaleDateString('zh-TW') : ''}</div>`;
       }
 
+      const locHtml = m.meeting_url
+        ? `<a href="${escHtml(m.meeting_url)}" target="_blank" style="color:var(--accent);text-decoration:none">💻 線上會議連結</a>`
+        : `📍 ${escHtml(m.location)}`;
+
       return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
         <div style="font-weight:500;font-size:0.9rem;margin-bottom:2px">${escHtml(m.title)}</div>
-        <div style="font-size:0.78rem;color:var(--text-muted)">📍 ${escHtml(m.location)}　👤 ${escHtml(m.organizer)}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted)">${locHtml}　👤 ${escHtml(m.organizer)}</div>
         <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">你勾選了 ${slotCount} 個時段</div>
         ${statusHtml}
       </div>`;
@@ -1154,7 +1297,9 @@
     if (!m) return toast('找不到此會議', 'error');
     document.getElementById('invite-form-title').textContent = m.title;
     document.getElementById('invite-form-desc').textContent = m.description || '';
-    document.getElementById('invite-organizer-info').textContent = `主辦人：${m.organizer}　地點：${m.location}`;
+    document.getElementById('invite-organizer-info').innerHTML = m.meeting_url
+      ? `主辦人：${m.organizer}　<a href="${escHtml(m.meeting_url)}" target="_blank" style="color:var(--accent)">💻 加入線上會議</a>`
+      : `主辦人：${m.organizer}　地點：${m.location}`;
 
     const now = new Date();
     const deadline = m.vote_deadline ? new Date(m.vote_deadline) : null;
@@ -1694,7 +1839,7 @@
           </div>
           <div class="meeting-meta">
             <span>👤 ${escHtml(m.organizer)}</span>
-            <span>📍 ${escHtml(m.location)}</span>
+            <span>${renderLocationMeta(m)}</span>
             <span>🕐 建立於 ${new Date(m.created_at).toLocaleDateString('zh-TW')}</span>
           </div>
           ${deadline ? `<div style="font-size:0.82rem;padding:6px 10px;border-radius:6px;margin-bottom:10px;display:inline-flex;align-items:center;gap:5px;${isClosed ? 'background:rgba(248,113,113,0.1);color:var(--danger);border:1px solid rgba(248,113,113,0.3)' : 'background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3)'}">⏱ ${isClosed ? '投票已截止：' : '截止日期：'}${deadline.toLocaleDateString('zh-TW', {year:'numeric',month:'numeric',day:'numeric'})} ${deadline.toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'})}</div>` : ''}
@@ -1734,10 +1879,22 @@
   document.getElementById('btn-create-meeting').addEventListener('click', async () => {
     const title    = document.getElementById('nm-title').value.trim();
     const organizer= document.getElementById('nm-organizer').value.trim();
-    const location = document.getElementById('nm-location').value.trim();
     const desc     = document.getElementById('nm-desc').value.trim();
 
-    if (!title || !organizer || !location) return toast('請填寫必填欄位', 'error');
+    // 判斷會議類型
+    const meetingType = document.querySelector('.type-btn.active')?.dataset.type || 'physical';
+    let location = '';
+    let meetingUrl = null;
+
+    if (meetingType === 'physical') {
+      location = document.getElementById('nm-location').value.trim();
+      if (!title || !organizer || !location) return toast('請填寫必填欄位', 'error');
+    } else {
+      const onlineUrl = document.getElementById('nm-online-url').value.trim();
+      if (!title || !organizer || !onlineUrl) return toast('請填寫必填欄位', 'error');
+      location = '線上會議';
+      meetingUrl = onlineUrl;
+    }
 
     const slots = [...document.querySelectorAll('.slot-row')].map(row => ({
       date : row.querySelector('.slot-date-input').value,
@@ -1753,6 +1910,7 @@
     const { data: meeting, error: me } = await sb.from('meetings').insert({
       title, organizer, location,
       description: desc || null,
+      meeting_url: meetingUrl,
       vote_deadline,
       created_by: currentUser.id
     }).select().single();
@@ -1777,7 +1935,14 @@
   });
 
   function resetNewMeetingForm() {
-    ['nm-title','nm-organizer','nm-location','nm-desc'].forEach(id => document.getElementById(id).value = '');
+    ['nm-title','nm-organizer','nm-desc'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('nm-location').value = '';
+    document.getElementById('nm-online-url').value = '';
+    document.getElementById('nm-map-embed').style.display = 'none';
+    document.getElementById('nm-map-preview-btn').style.display = 'none';
+    document.getElementById('nm-map-link').style.display = 'none';
+    // Reset to physical
+    switchMeetingType('physical', document.querySelector('.type-btn[data-type="physical"]'));
     clearDeadline();
     document.getElementById('slot-inputs').innerHTML = `
       <div class="slot-row">
@@ -1976,6 +2141,142 @@
   function formatDateShort(d) {
     const dt = new Date(d + 'T00:00:00');
     return dt.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' });
+  }
+
+  // ── 會議形式切換 ──
+  function switchMeetingType(type, btn) {
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (type === 'physical') {
+      document.getElementById('nm-physical-fields').style.display = 'block';
+      document.getElementById('nm-online-fields').style.display = 'none';
+    } else {
+      document.getElementById('nm-physical-fields').style.display = 'none';
+      document.getElementById('nm-online-fields').style.display = 'block';
+      detectOnlinePlatform();
+    }
+  }
+
+  // ── 線上平台偵測 ──
+  function detectOnlinePlatform() {
+    const url = document.getElementById('nm-online-url').value.trim();
+    const el = document.getElementById('nm-online-platform');
+    if (!url) { el.style.display = 'none'; return; }
+    const platforms = [
+      { pattern: /meet\.google\.com/i,   icon: '🎥', name: 'Google Meet',    color: '#1a73e8' },
+      { pattern: /zoom\.us/i,            icon: '🟦', name: 'Zoom',           color: '#2D8CFF' },
+      { pattern: /teams\.microsoft\.com/i,icon: '🟣', name: 'Microsoft Teams',color: '#6264a7' },
+      { pattern: /webex\.com/i,          icon: '🟩', name: 'Cisco Webex',    color: '#00b050' },
+      { pattern: /whereby\.com/i,        icon: '🟧', name: 'Whereby',        color: '#f97316' },
+    ];
+    const match = platforms.find(p => p.pattern.test(url));
+    if (match) {
+      el.style.display = 'flex';
+      el.innerHTML = `<span style="color:${match.color}">${match.icon} 偵測到：${match.name}</span>`;
+    } else if (url.startsWith('http')) {
+      el.style.display = 'flex';
+      el.innerHTML = `<span>🔗 自訂連結</span>`;
+    } else {
+      el.style.display = 'none';
+    }
+  }
+  document.getElementById('nm-online-url').addEventListener('input', detectOnlinePlatform);
+
+  // ── 地址輸入自動建議（用 Google Maps Geocoding 免費搜尋）──
+  let _suggTimeout = null;
+  function onLocationInput() {
+    const val = document.getElementById('nm-location').value.trim();
+    // 顯示/隱藏地圖按鈕
+    document.getElementById('nm-map-preview-btn').style.display = val.length > 2 ? 'inline-flex' : 'none';
+
+    // 更新 Google Maps 外部連結
+    if (val.length > 2) {
+      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(val)}`;
+      const linkEl = document.getElementById('nm-map-link');
+      linkEl.href = mapUrl;
+      linkEl.style.display = 'inline-flex';
+    } else {
+      document.getElementById('nm-map-link').style.display = 'none';
+      document.getElementById('nm-map-embed').style.display = 'none';
+    }
+
+    // 自動建議（用 Nominatim 開放 API，無需 key）
+    clearTimeout(_suggTimeout);
+    if (val.length < 3) { hideSuggestions(); return; }
+    _suggTimeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&addressdetails=1&limit=5&accept-language=zh-TW`, {
+          headers: { 'Accept-Language': 'zh-TW' }
+        });
+        const data = await res.json();
+        showSuggestions(data);
+      } catch(e) { hideSuggestions(); }
+    }, 400);
+  }
+
+  function showSuggestions(results) {
+    const box = document.getElementById('nm-location-suggestions');
+    if (!results || !results.length) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = results.map(r => {
+      const main = r.display_name.split(',')[0];
+      const sub  = r.display_name.split(',').slice(1, 3).join(',').trim();
+      return `<div class="map-suggestion-item" onmousedown="selectSuggestion(${JSON.stringify(r.display_name)})">
+        <div class="map-suggestion-main">${escHtml(main)}</div>
+        <div class="map-suggestion-sub">${escHtml(sub)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function hideSuggestions() {
+    setTimeout(() => {
+      const box = document.getElementById('nm-location-suggestions');
+      if (box) box.style.display = 'none';
+    }, 150);
+  }
+
+  function selectSuggestion(displayName) {
+    document.getElementById('nm-location').value = displayName;
+    hideSuggestions();
+    previewMap();
+  }
+
+  // ── 地圖嵌入預覽 ──
+  function previewMap() {
+    const loc = document.getElementById('nm-location').value.trim();
+    if (!loc) return;
+    const embedSrc = `https://www.google.com/maps?q=${encodeURIComponent(loc)}&output=embed`;
+    const iframe = document.getElementById('nm-map-iframe');
+    iframe.src = embedSrc;
+    document.getElementById('nm-map-embed').style.display = 'block';
+    // 更新外部連結
+    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
+    document.getElementById('nm-map-link').href = mapUrl;
+    document.getElementById('nm-map-link').style.display = 'inline-flex';
+  }
+
+  // ── 渲染地點（卡片上）──
+  function renderLocationMeta(m) {
+    if (m.meeting_url) {
+      // 線上會議
+      const platforms = [
+        { pattern: /meet\.google\.com/i,    icon: '🎥', name: 'Google Meet',     color: '#1a73e8', bg: '#e8f0fe' },
+        { pattern: /zoom\.us/i,             icon: '🟦', name: 'Zoom',            color: '#2D8CFF', bg: '#e8f4ff' },
+        { pattern: /teams\.microsoft\.com/i,icon: '🟣', name: 'Microsoft Teams', color: '#6264a7', bg: '#f0f0f8' },
+        { pattern: /webex\.com/i,           icon: '🟩', name: 'Cisco Webex',     color: '#00b050', bg: '#e8f8ee' },
+        { pattern: /whereby\.com/i,         icon: '🟧', name: 'Whereby',         color: '#f97316', bg: '#fff4ed' },
+      ];
+      const match = platforms.find(p => p.pattern.test(m.meeting_url));
+      const label = match ? match.name : '線上會議';
+      const icon  = match ? match.icon : '💻';
+      const color = match ? match.color : 'var(--accent)';
+      const bg    = match ? match.bg : 'var(--accent-pale)';
+      return `<a href="${escHtml(m.meeting_url)}" target="_blank" class="online-link-pill" style="background:${bg};color:${color};border:1px solid ${color}30">${icon} ${label} — 點此加入</a>`;
+    } else {
+      // 實體會議 — 加上地圖連結
+      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.location)}`;
+      return `<a href="${mapUrl}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:0.8rem" title="在 Google Maps 開啟">📍 ${escHtml(m.location)}</a>`;
+    }
   }
 </script>
 </body>
